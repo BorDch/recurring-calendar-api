@@ -1,0 +1,2 @@
+{"series": 1000, "sql_queries": 2, "events": 1000, "response_bytes": 28783, "total_ms": 15.82, "raw_sql_fetch_ms": 3.41, "sql_fetch_ms": 8.19, "recurrence_ms": 0.59, "json_ms": 0.33}
+{"series": 10000, "sql_queries": 2, "events": 10000, "response_bytes": 309891, "total_ms": 80.13, "raw_sql_fetch_ms": 26.43, "sql_fetch_ms": 61.37, "recurrence_ms": 6.04, "json_ms": 2.72}
