@@ -2,6 +2,23 @@
 
 Небольшой календарный API на Python 3.14, Django 5.2.19 и SQLite.
 
+## Профили запуска
+
+Профиль выбирается переменной `CALENDAR_PROFILE`. По умолчанию действует `local`: база `db.local.sqlite3`, пять исходных API-маршрутов доступны без входа, POST работает с обычным `curl`, сервер слушает `localhost:8000`. Защищённый профиль `private` использует `db.sqlite3`, сеансовый вход Django и CSRF. Старые серии без владельца скрыты до явного назначения.
+
+```bash
+# Локальный профиль
+CALENDAR_PROFILE=local .venv/bin/python manage.py migrate
+CALENDAR_PROFILE=local .venv/bin/python manage.py runserver localhost:8000
+
+# Защищённый профиль (в другом запуске)
+CALENDAR_PROFILE=private .venv/bin/python manage.py migrate
+CALENDAR_PROFILE=private .venv/bin/python manage.py createsuperuser
+CALENDAR_PROFILE=private .venv/bin/python manage.py runserver localhost:8000
+```
+
+В защищённом профиле откройте `http://localhost:8000/login/`. Выход доступен кнопкой календаря (POST `/logout/`). Для назначения старых серий сначала просмотрите список: `CALENDAR_PROFILE=private .venv/bin/python manage.py assign_series USERNAME 1 2`, затем повторите с `--apply`. Команда принимает только существующие серии без владельца и не меняет исключения или дату обрезания.
+
 ## Запуск с нуля
 
 Из корня проекта:
@@ -10,10 +27,10 @@
 python3.14 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python manage.py migrate
-.venv/bin/python manage.py runserver 127.0.0.1:8000
+.venv/bin/python manage.py runserver localhost:8000
 ```
 
-API доступен по `http://localhost:8000`. Миграции создают таблицы `EventsSeries` и `EventException` в `db.sqlite3`. Для проверок без изменения основной базы: `.venv/bin/python manage.py test events`.
+API доступен по `http://localhost:8000`. Миграции создают таблицы `EventsSeries` и `EventException` в `db.local.sqlite3` при запуске по умолчанию. Для проверок без изменения основной базы: `.venv/bin/python manage.py test events`.
 
 ## Интерфейс календаря
 
@@ -74,11 +91,9 @@ curl -i -X POST "$BASE/add/" -H 'Content-Type: application/json' -d '{"name":"О
 
 Все три операции изменения возвращают `204` без тела. `GET` возвращает `200`; создание — `201`. `SERIES_ID` берётся из ответа сервера, поэтому демо можно повторить на уже заполненной базе.
 
-## Локальный режим и публикация
+## Доступ и CSRF
 
-Сейчас любой клиент, который может подключиться к серверу, читает все события и создаёт, переименовывает или отменяет любую серию по её `id`. Авторизации и разграничения владельцев нет. `csrf_exempt` применён к четырём POST-обработчикам (`add`, `update`, `remove`, `remove-next`), чтобы локальное демо работало с обычным `curl`. Это намеренное поведение локального режима.
-
-Перед публикацией нужны аутентификация, проверка прав на каждую серию и согласованная схема защиты запросов (CSRF для сеансового входа либо другой механизм для API). Следует выключить `DEBUG`, вынести `SECRET_KEY` из кода, задать `ALLOWED_HOSTS`, включить HTTPS и подходящие cookie/security-настройки. Сейчас ошибки валидации дают `400`, отсутствие серии или видимого повторения — `404`, неправильный метод — `405`; неожиданные ошибки могут стать `500`, а при `DEBUG=True` показать отладочную информацию. Ограничения размера тела запроса и частоты запросов пока нет.
+В профиле `private` календарь и все API-маршруты требуют входа. Серии доступны только своему владельцу; чужой id при изменении даёт `404`. Браузер передаёт CSRF-токен в заголовке `X-CSRFToken` для POST. В профиле `local` сохраняется прежний договор API без входа и CSRF для локального задания.
 
 ## Нагрузочная проверка
 

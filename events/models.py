@@ -1,6 +1,8 @@
 from django.db import models
+from django.conf import settings
 
 class EventsSeries(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="event_series")
     name = models.TextField()
     start_at = models.DateTimeField()
     period = models.PositiveIntegerField(null=True, blank=True)

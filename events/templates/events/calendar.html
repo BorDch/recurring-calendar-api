@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Календарь</title>
   <link rel="stylesheet" href="{% static 'events/calendar.css' %}">
+  {% if private_profile %}<meta name="csrf-token" content="{{ csrf_token }}">{% endif %}
   <script src="{% static 'events/calendar.js' %}" defer></script>
 </head>
 <body>
@@ -21,6 +22,7 @@
 
   <main class="main-content">
     <header class="main-header">
+      {% if private_profile %}<form method="post" action="{% url 'logout' %}" class="logout-form">{% csrf_token %}<button type="submit">Выйти ({{ user.username }})</button></form>{% endif %}
       <div><p class="eyebrow">Планирование</p><h1 id="month-title">Календарь</h1><p class="subtitle" id="month-subtitle">События и повторения на месяц</p></div>
       <div class="month-controls"><button class="today-button" id="today-button" type="button">Сегодня</button><div class="arrow-group"><button id="prev-month" type="button" aria-label="Предыдущий месяц">‹</button><button id="next-month" type="button" aria-label="Следующий месяц">›</button></div></div>
     </header>

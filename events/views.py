@@ -6,10 +6,10 @@ from functools import wraps
 
 from django.db import OperationalError, transaction
 from django.db.models import F
+from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.shortcuts import render
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
 from .models import EventException, EventsSeries
@@ -55,15 +55,22 @@ def retry_locked(view):
     return wrapped
 
 
-def lock_series(series_id):
+def visible_series(request):
+    queryset = EventsSeries.objects.all()
+    if settings.CALENDAR_PROFILE == "private":
+        queryset = queryset.filter(owner=request.user)
+    return queryset
+
+
+def lock_series(request, series_id):
     # SQLite obtains its writer lock before checking visibility; retries cover busy writers.
-    EventsSeries.objects.filter(pk=series_id).update(name=F("name"))
-    return get_object_or_404(EventsSeries, pk=series_id)
+    visible_series(request).filter(pk=series_id).update(name=F("name"))
+    return get_object_or_404(visible_series(request), pk=series_id)
 
 
 @require_GET
 def calendar_home(request):
-    return render(request, "events/calendar.html")
+    return render(request, "events/calendar.html", {"private_profile": settings.CALENDAR_PROFILE == "private"})
 
 
 @require_GET
@@ -86,10 +93,10 @@ def events_range(request):
     exceptions = {
         (series_id, exception_date): (name, is_cancelled)
         for series_id, exception_date, name, is_cancelled in EventException.objects.filter(
-            date__range=(start, end)
+            series__in=visible_series(request), date__range=(start, end)
         ).values_list("series_id", "date", "name", "is_cancelled")
     }
-    for series in EventsSeries.objects.filter(start_at__date__lte=end).order_by("id"):
+    for series in visible_series(request).filter(start_at__date__lte=end).order_by("id"):
         utc_time = series.start_at.astimezone(timezone.utc).strftime("%H:%M")
         for target in result:
             if not occurs_on(series, target):
@@ -108,7 +115,6 @@ def events_range(request):
 
 
 @retry_locked
-@csrf_exempt
 @require_POST
 def add_event(request):
     try:
@@ -128,7 +134,8 @@ def add_event(request):
     except (OverflowError, OSError, ValueError):
         return JsonResponse({"error": "Invalid timestamp"}, status=400)
 
-    series = EventsSeries.objects.create(name=name, start_at=start_datetime, period=period)
+    series = EventsSeries.objects.create(name=name, start_at=start_datetime, period=period,
+                                        owner=request.user if settings.CALENDAR_PROFILE == "private" else None)
     return JsonResponse({"id": series.id}, status=201)
 
 
@@ -140,12 +147,12 @@ def events_on_date(request, year, month, day):
 
     exceptions = {
         series_id: (name, is_cancelled)
-        for series_id, name, is_cancelled in EventException.objects.filter(date=target).values_list(
+        for series_id, name, is_cancelled in EventException.objects.filter(series__in=visible_series(request), date=target).values_list(
             "series_id", "name", "is_cancelled"
         )
     }
     result = []
-    for series in EventsSeries.objects.filter(start_at__date__lte=target).order_by("id"):
+    for series in visible_series(request).filter(start_at__date__lte=target).order_by("id"):
         if not occurs_on(series, target):
             continue
         if series.id in exceptions:
@@ -160,7 +167,6 @@ def events_on_date(request, year, month, day):
 
 
 @retry_locked
-@csrf_exempt
 @require_POST
 @transaction.atomic
 def update_event(request, id, year, month, day):
@@ -174,7 +180,7 @@ def update_event(request, id, year, month, day):
     if not isinstance(data, dict) or set(data) != {"name"} or type(data["name"]) is not str:
         return JsonResponse({"error": "Invalid fields"}, status=400)
 
-    series = lock_series(id)
+    series = lock_series(request, id)
     if not visible_on(series, target):
         return HttpResponse(status=404)
     EventException.objects.update_or_create(
@@ -184,14 +190,13 @@ def update_event(request, id, year, month, day):
 
 
 @retry_locked
-@csrf_exempt
 @require_POST
 @transaction.atomic
 def remove_event(request, id, year, month, day):
     target = request_date(year, month, day)
     if target is None:
         return JsonResponse({"error": "Invalid date"}, status=400)
-    series = lock_series(id)
+    series = lock_series(request, id)
     if not visible_on(series, target):
         return HttpResponse(status=404)
     EventException.objects.update_or_create(
@@ -201,14 +206,13 @@ def remove_event(request, id, year, month, day):
 
 
 @retry_locked
-@csrf_exempt
 @require_POST
 @transaction.atomic
 def remove_next(request, id, year, month, day):
     target = request_date(year, month, day)
     if target is None:
         return JsonResponse({"error": "Invalid date"}, status=400)
-    series = lock_series(id)
+    series = lock_series(request, id)
     if not visible_on(series, target):
         return HttpResponse(status=404)
     series.cutoff_date = target
