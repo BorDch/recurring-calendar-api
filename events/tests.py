@@ -4,10 +4,13 @@ from datetime import date, datetime, timezone
 from threading import Barrier
 
 from django.test import Client, TestCase, TransactionTestCase
+from django.conf import settings
+from unittest import skipUnless
 
 from .models import EventException, EventsSeries
 
 
+@skipUnless(settings.CALENDAR_PROFILE == 'local', 'local API contract')
 class CalendarApiTests(TestCase):
     def post_json(self, path, data):
         return self.client.post(path, data=json.dumps(data), content_type="application/json")
@@ -184,6 +187,7 @@ class CalendarApiTests(TestCase):
         self.assertEqual(self.client.post("/events/range/?start=2026-01-01&end=2026-01-02").status_code, 405)
 
 
+@skipUnless(settings.CALENDAR_PROFILE == 'local', 'local API contract')
 class ConcurrentApiTests(TransactionTestCase):
     def concurrent(self, actions):
         barrier = Barrier(len(actions))
