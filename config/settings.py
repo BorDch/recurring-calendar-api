@@ -16,8 +16,8 @@ import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 CALENDAR_PROFILE = os.environ.get('CALENDAR_PROFILE', 'local')
-if CALENDAR_PROFILE not in ('local', 'private'):
-    raise ValueError('CALENDAR_PROFILE must be local or private')
+if CALENDAR_PROFILE not in ('local', 'private', 'production'):
+    raise ValueError('CALENDAR_PROFILE must be local, private or production')
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/login/'
@@ -27,12 +27,40 @@ LOGOUT_REDIRECT_URL = '/login/'
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-d2ed28xq*+y-%9l_as*k7_b-a85@@aot_!0apln@^e_x1@k3@&'
+def required(name):
+    value = os.environ.get(name, '').strip()
+    if not value:
+        raise RuntimeError(f'{name} is required for the production profile')
+    return value
+
+
+def binary_setting(name, default):
+    value = os.environ.get(name, default)
+    if value not in ('0', '1'):
+        raise RuntimeError(f'{name} must be 0 or 1')
+    return value == '1'
+
+
+SECRET_KEY = required('SECRET_KEY') if CALENDAR_PROFILE == 'production' else os.environ.get('SECRET_KEY', 'django-insecure-local-only')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = CALENDAR_PROFILE != 'production'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [host.strip() for host in required('ALLOWED_HOSTS').split(',') if host.strip()] if CALENDAR_PROFILE == 'production' else []
+CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in required('CSRF_TRUSTED_ORIGINS').split(',') if origin.strip()] if CALENDAR_PROFILE == 'production' else []
+if CALENDAR_PROFILE == 'production' and (not ALLOWED_HOSTS or not CSRF_TRUSTED_ORIGINS):
+    raise RuntimeError('ALLOWED_HOSTS and CSRF_TRUSTED_ORIGINS must contain values')
+
+if CALENDAR_PROFILE == 'production':
+    # Set to 0 only for an isolated HTTP smoke test; public traffic requires HTTPS.
+    https_enabled = binary_setting('CALENDAR_HTTPS_ENABLED', '1')
+    SECURE_SSL_REDIRECT = https_enabled
+    SESSION_COOKIE_SECURE = https_enabled
+    CSRF_COOKIE_SECURE = https_enabled
+    SECURE_HSTS_SECONDS = 31536000 if https_enabled else 0
+    # Enable only when the reverse proxy strips client supplied X-Forwarded-Proto.
+    if binary_setting('CALENDAR_TRUST_PROXY_HTTPS', '0'):
+        SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Application definition
@@ -49,6 +77,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -80,12 +109,20 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
+if CALENDAR_PROFILE == 'production':
+    DATABASES = {'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': required('POSTGRES_DB'),
+        'USER': required('POSTGRES_USER'),
+        'PASSWORD': required('POSTGRES_PASSWORD'),
+        'HOST': required('POSTGRES_HOST'),
+        'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+    }}
+else:
+    DATABASES = {'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': os.environ.get('CALENDAR_DB') or BASE_DIR / ('db.local.sqlite3' if CALENDAR_PROFILE == 'local' else 'db.sqlite3'),
-    }
-}
+    }}
 
 
 # Password validation
@@ -123,6 +160,9 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+if CALENDAR_PROFILE == 'production':
+    STORAGES = {'staticfiles': {'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage'}}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

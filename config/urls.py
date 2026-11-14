@@ -25,7 +25,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 
 def calendar_view(view, *, write=False):
-    if settings.CALENDAR_PROFILE == 'private':
+    if settings.CALENDAR_PROFILE in ('private', 'production'):
         return login_required(view)
     return csrf_exempt(view) if write else view
 
@@ -40,7 +40,7 @@ urlpatterns = [
     path('remove/<int:id>/<str:year>/<str:month>/<str:day>/', calendar_view(views.remove_event, write=True), name='remove_event'),
     path('remove-next/<int:id>/<str:year>/<str:month>/<str:day>/', calendar_view(views.remove_next, write=True), name='remove_next'),
 ]
-if settings.CALENDAR_PROFILE == 'private':
+if settings.CALENDAR_PROFILE in ('private', 'production'):
     urlpatterns += [
         path('login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
         path('logout/', auth_views.LogoutView.as_view(), name='logout'),

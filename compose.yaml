@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: calendar
+      POSTGRES_USER: calendar
+      POSTGRES_PASSWORD: local-test-only
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - calendar_pg_test:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U calendar"]
+      interval: 2s
+      retries: 15
+volumes:
+  calendar_pg_test:

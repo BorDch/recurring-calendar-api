@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.conf import settings
 from unittest import skipUnless
 from io import StringIO
@@ -9,7 +9,8 @@ from django.core.management import call_command
 from .models import EventException, EventsSeries
 
 
-@skipUnless(settings.CALENDAR_PROFILE == 'private', 'private profile only')
+@skipUnless(settings.CALENDAR_PROFILE in ('private', 'production'), 'authenticated profile only')
+@override_settings(SECURE_SSL_REDIRECT=False)
 class PrivateCalendarTests(TestCase):
     def test_two_users_csrf_logout_and_ownership(self):
         users = [get_user_model().objects.create_user(username=name, password='long-test-password') for name in ('alice', 'bob')]

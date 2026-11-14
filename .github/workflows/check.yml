@@ -1,0 +1,48 @@
+name: check
+on: [push, pull_request]
+jobs:
+  sqlite:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: pip install -r requirements.txt
+      - run: python manage.py test events
+      - run: CALENDAR_PROFILE=private python manage.py test events
+      - run: python manage.py makemigrations --check --dry-run
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: calendar
+          POSTGRES_USER: calendar
+          POSTGRES_PASSWORD: local-test-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U calendar"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CALENDAR_PROFILE: production
+      SECRET_KEY: ci-test-key-only-not-for-deployment
+      ALLOWED_HOSTS: localhost
+      CSRF_TRUSTED_ORIGINS: https://localhost
+      POSTGRES_DB: calendar
+      POSTGRES_USER: calendar
+      POSTGRES_PASSWORD: local-test-only
+      POSTGRES_HOST: localhost
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: pip install -r requirements.txt
+      - run: python manage.py collectstatic --noinput
+      - run: python manage.py test events
+      - run: python manage.py check --deploy
+      - run: python manage.py makemigrations --check --dry-run

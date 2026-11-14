@@ -4,7 +4,7 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 
-from django.db import OperationalError, transaction
+from django.db import OperationalError, transaction, connection
 from django.db.models import F
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
@@ -57,20 +57,23 @@ def retry_locked(view):
 
 def visible_series(request):
     queryset = EventsSeries.objects.all()
-    if settings.CALENDAR_PROFILE == "private":
+    if settings.CALENDAR_PROFILE in ("private", "production"):
         queryset = queryset.filter(owner=request.user)
     return queryset
 
 
 def lock_series(request, series_id):
-    # SQLite obtains its writer lock before checking visibility; retries cover busy writers.
-    visible_series(request).filter(pk=series_id).update(name=F("name"))
-    return get_object_or_404(visible_series(request), pk=series_id)
+    queryset = visible_series(request).filter(pk=series_id)
+    if connection.vendor == 'postgresql':
+        return get_object_or_404(queryset.select_for_update(), pk=series_id)
+    # SQLite has no row locks: take its writer lock before checking visibility.
+    queryset.update(name=F("name"))
+    return get_object_or_404(queryset, pk=series_id)
 
 
 @require_GET
 def calendar_home(request):
-    return render(request, "events/calendar.html", {"private_profile": settings.CALENDAR_PROFILE == "private"})
+    return render(request, "events/calendar.html", {"private_profile": settings.CALENDAR_PROFILE != "local"})
 
 
 @require_GET
@@ -135,7 +138,7 @@ def add_event(request):
         return JsonResponse({"error": "Invalid timestamp"}, status=400)
 
     series = EventsSeries.objects.create(name=name, start_at=start_datetime, period=period,
-                                        owner=request.user if settings.CALENDAR_PROFILE == "private" else None)
+                                        owner=request.user if settings.CALENDAR_PROFILE != "local" else None)
     return JsonResponse({"id": series.id}, status=201)
 
 
