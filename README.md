@@ -1,8 +1,10 @@
 # Recurring Calendar API
 
-Небольшой календарный API на Python 3.14, Django 5.2.19 и SQLite.
+Календарь и API повторяющихся событий на Django. Local и private используют SQLite; production — PostgreSQL.
 
-## Запуск с нуля
+![Календарь после демонстрационного сценария](docs/demo-calendar.png)
+
+## Быстрый запуск
 
 Из корня проекта:
 
@@ -14,6 +16,24 @@ python3.14 -m venv .venv
 ```
 
 API доступен по `http://localhost:8000`. Миграции создают таблицы `EventsSeries` и `EventException` в `db.local.sqlite3` при запуске по умолчанию. Для проверок без изменения основной базы: `.venv/bin/python manage.py test events`.
+
+[Контракт API](docs/openapi.yaml) · [Демо на 2–3 минуты](docs/demo.md)
+
+## Как устроены повторы
+
+```mermaid
+flowchart LR
+    B[Браузер] --> D[Django: страницы и API]
+    C[API-клиент] --> D
+    D --> S[EventsSeries: начало, период, владелец, дата обрезания]
+    D --> E[EventException: имя или отмена на дату]
+    S --> L[(SQLite: local/private)]
+    E --> L
+    S --> P[(PostgreSQL: production)]
+    E --> P
+```
+
+Например, создание недельного осмотра 2 ноября 2026 года сохраняет **одну** `EventsSeries` с `period=7` и одним ID. Повторы вычисляются при чтении, поэтому записи на каждый понедельник заранее не нужны. Переименование 9 ноября и отмена 16 ноября добавляют по одному `EventException` для той же серии. Обрезание с 23 ноября записывает `cutoff_date=2026-11-23` в `EventsSeries`: 23 ноября и все следующие даты не показываются. Соседние ранние повторы сохраняются.
 
 ## Профили запуска
 
