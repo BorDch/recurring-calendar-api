@@ -1,0 +1,263 @@
+openapi: 3.1.0
+info:
+  title: Recurring Calendar API
+  version: 1.0.0
+  description: |
+    One ID identifies an entire series. Dates and times are interpreted in UTC;
+    repetitions are computed in calendar days rather than materialized in advance.
+    A repeated POST /add/ after a timeout can create a second series with a new ID:
+    the endpoint has no idempotency key.
+servers:
+  - url: http://localhost:8000
+    description: local development profile
+security:
+  - djangoSession: []
+  - {}
+tags:
+  - name: Calendar
+    description: |
+      In local, these API routes are anonymous and POST routes are CSRF-exempt.
+      In private and production, every calendar route requires Django session login;
+      unauthenticated GET requests redirect to /login/ (usually 302 with an HTML page).
+      POST requests require a valid CSRF cookie and X-CSRFToken header; without
+      valid CSRF, Django can return 403 HTML before the login redirect. Production HTTP requests may first redirect to HTTPS. Only the owner's series are visible; another owner's
+      ID returns 404 on writes. No token or API-key authentication is implemented.
+paths:
+  /add/:
+    post:
+      tags: [Calendar]
+      summary: Create a single event or recurring series
+      description: period is a positive number of UTC calendar days; null means one occurrence.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewSeries'
+            example: {name: 'Еженедельный осмотр линии №2', start_at: 1793610000, period: 7}
+      responses:
+        '201':
+          description: Series created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedSeries'
+              example: {id: 1}
+        '400':
+          description: Invalid JSON, fields, period or timestamp (JSON)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                invalidJson: { value: {error: Invalid JSON} }
+                invalidFields: { value: {error: Invalid fields} }
+                invalidPeriod: { value: {error: Invalid period} }
+                invalidTimestamp: { value: {error: Invalid timestamp} }
+        '302': { $ref: '#/components/responses/LoginRedirect' }
+        '403': { $ref: '#/components/responses/CsrfRejected' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+  /events/{year}/{month}/{day}/:
+    parameters:
+      - { $ref: '#/components/parameters/Year' }
+      - { $ref: '#/components/parameters/Month' }
+      - { $ref: '#/components/parameters/Day' }
+    get:
+      tags: [Calendar]
+      summary: List occurrences on one UTC date
+      responses:
+        '200':
+          description: Visible occurrences; empty days return an empty array
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DayEvent' }
+              examples:
+                occupied: { value: [{name: 'Еженедельный осмотр линии №2', id: 1}] }
+                empty: { value: [] }
+        '400': { $ref: '#/components/responses/InvalidDate' }
+        '302': { $ref: '#/components/responses/LoginRedirect' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+  /update/{id}/{year}/{month}/{day}/:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+      - { $ref: '#/components/parameters/Year' }
+      - { $ref: '#/components/parameters/Month' }
+      - { $ref: '#/components/parameters/Day' }
+    post:
+      tags: [Calendar]
+      summary: Rename one visible occurrence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Rename' }
+            example: {name: 'Повторный осмотр линии №2'}
+      responses:
+        '204': { description: Occurrence renamed; no response body }
+        '400':
+          description: Invalid date, JSON or fields (JSON)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                invalidDate: { value: {error: Invalid date} }
+                invalidJson: { value: {error: Invalid JSON} }
+                invalidFields: { value: {error: Invalid fields} }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '302': { $ref: '#/components/responses/LoginRedirect' }
+        '403': { $ref: '#/components/responses/CsrfRejected' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+  /remove/{id}/{year}/{month}/{day}/:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+      - { $ref: '#/components/parameters/Year' }
+      - { $ref: '#/components/parameters/Month' }
+      - { $ref: '#/components/parameters/Day' }
+    post:
+      tags: [Calendar]
+      summary: Cancel one visible occurrence
+      responses:
+        '204': { description: Occurrence cancelled; no response body }
+        '400': { $ref: '#/components/responses/InvalidDate' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '302': { $ref: '#/components/responses/LoginRedirect' }
+        '403': { $ref: '#/components/responses/CsrfRejected' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+  /remove-next/{id}/{year}/{month}/{day}/:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+      - { $ref: '#/components/parameters/Year' }
+      - { $ref: '#/components/parameters/Month' }
+      - { $ref: '#/components/parameters/Day' }
+    post:
+      tags: [Calendar]
+      summary: Cut off a series starting with this occurrence (inclusive)
+      responses:
+        '204': { description: Cutoff saved; no response body }
+        '400': { $ref: '#/components/responses/InvalidDate' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '302': { $ref: '#/components/responses/LoginRedirect' }
+        '403': { $ref: '#/components/responses/CsrfRejected' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+  /events/range/:
+    get:
+      tags: [Calendar]
+      summary: List visible occurrences across 1–42 inclusive UTC dates
+      parameters:
+        - name: start
+          in: query
+          required: true
+          schema: { type: string, format: date }
+          example: '2026-11-09'
+        - name: end
+          in: query
+          required: true
+          schema: { type: string, format: date }
+          example: '2026-11-10'
+      responses:
+        '200':
+          description: One entry per date, including empty dates
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Range' }
+              example:
+                days:
+                  - {date: '2026-11-09', events: [{id: 1, name: 'Еженедельный осмотр линии №2', time: '09:00'}]}
+                  - {date: '2026-11-10', events: []}
+        '400':
+          description: Invalid query or range length (JSON)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                invalid: { value: {error: Invalid range} }
+                length: { value: {error: Range must contain 1 to 42 days} }
+        '302': { $ref: '#/components/responses/LoginRedirect' }
+        '405': { $ref: '#/components/responses/MethodNotAllowed' }
+components:
+  securitySchemes:
+    djangoSession:
+      type: apiKey
+      in: cookie
+      name: sessionid
+      description: Django session cookie in private/production; POST also requires CSRF cookie and X-CSRFToken.
+  parameters:
+    Id: {name: id, in: path, required: true, schema: {type: integer, minimum: 0}, description: One ID for the whole series}
+    Year: {name: year, in: path, required: true, schema: {type: string}, example: '2026'}
+    Month: {name: month, in: path, required: true, schema: {type: string}, example: '11'}
+    Day: {name: day, in: path, required: true, schema: {type: string}, example: '16'}
+  responses:
+    LoginRedirect:
+      description: Unauthenticated private/production request that passes CSRF checks; 302 to /login/?next=...
+    CsrfRejected:
+      description: Invalid or missing CSRF token in private/production; Django HTML 403 page, possibly before login redirect
+    InvalidDate:
+      description: Invalid calendar date (JSON)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: {error: Invalid date}
+    NotFound:
+      description: |
+        Unknown or inaccessible series may return Django's HTML 404 page;
+        a known series with an invisible occurrence returns 404 with an empty body.
+    MethodNotAllowed:
+      description: Method not allowed; empty response body
+  schemas:
+    NewSeries:
+      type: object
+      additionalProperties: false
+      required: [name, start_at, period]
+      properties:
+        name: {type: string}
+        start_at: {type: integer, description: 'Unix timestamp in seconds, UTC'}
+        period: {type: [integer, 'null'], minimum: 1, maximum: 9223372036854775807, description: UTC calendar days}
+    Rename:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string}
+    CreatedSeries:
+      type: object
+      additionalProperties: false
+      required: [id]
+      properties:
+        id: {type: integer}
+    DayEvent:
+      type: object
+      additionalProperties: false
+      required: [name, id]
+      properties:
+        name: {type: string}
+        id: {type: integer}
+    Range:
+      type: object
+      additionalProperties: false
+      required: [days]
+      properties:
+        days:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [date, events]
+            properties:
+              date: {type: string, format: date}
+              events:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [id, name, time]
+                  properties:
+                    id: {type: integer}
+                    name: {type: string}
+                    time: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$', description: UTC time}
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error: {type: string}
