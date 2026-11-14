@@ -3,15 +3,23 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timezone
 from threading import Barrier
 
-from django.test import Client, TestCase, TransactionTestCase
+from django.test import Client, TestCase, TransactionTestCase, override_settings
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from unittest import skipUnless
 
 from .models import EventException, EventsSeries
 
 
-@skipUnless(settings.CALENDAR_PROFILE == 'local', 'local API contract')
+@override_settings(SECURE_SSL_REDIRECT=False)
 class CalendarApiTests(TestCase):
+    def setUp(self):
+        if settings.CALENDAR_PROFILE != 'local':
+            self.user = get_user_model().objects.create_user(username='calendar', password='test-password')
+            self.client.force_login(self.user)
+
+    def owner(self):
+        return {'owner': self.user} if settings.CALENDAR_PROFILE != 'local' else {}
     def post_json(self, path, data):
         return self.client.post(path, data=json.dumps(data), content_type="application/json")
 
@@ -139,13 +147,13 @@ class CalendarApiTests(TestCase):
     def test_day_read_uses_two_calendar_queries_with_exceptions(self):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         series = EventsSeries.objects.bulk_create(
-            [EventsSeries(name=f"S{i}", start_at=start, period=7) for i in range(100)]
+            [EventsSeries(name=f"S{i}", start_at=start, period=7, **self.owner()) for i in range(100)]
         )
         target = date(2026, 1, 1)
         EventException.objects.create(series=series[0], date=target, name="Renamed")
         EventException.objects.create(series=series[1], date=target, is_cancelled=True)
         EventException.objects.create(series=series[2], date=target, name=None)
-        with self.assertNumQueries(2):
+        with self.assertNumQueries(2 if settings.CALENDAR_PROFILE == 'local' else 4):
             response = self.client.get("/events/2026/1/1/")
         self.assertEqual(response.status_code, 200)
         events = response.json()
@@ -175,8 +183,8 @@ class CalendarApiTests(TestCase):
 
     def test_range_limit_validation_and_batch_queries(self):
         start = datetime(2026, 12, 31, 0, 5, tzinfo=timezone.utc)
-        EventsSeries.objects.bulk_create([EventsSeries(name=f"S{i}", start_at=start, period=7) for i in range(100)])
-        with self.assertNumQueries(2):
+        EventsSeries.objects.bulk_create([EventsSeries(name=f"S{i}", start_at=start, period=7, **self.owner()) for i in range(100)])
+        with self.assertNumQueries(2 if settings.CALENDAR_PROFILE == 'local' else 4):
             response = self.client.get("/events/range/?start=2026-12-28&end=2027-02-07")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["days"]), 42)
@@ -192,10 +200,11 @@ class ConcurrentApiTests(TransactionTestCase):
     def concurrent(self, actions):
         barrier = Barrier(len(actions))
         def run(action):
-            barrier.wait()
+            barrier.wait(timeout=5)
             return action(Client())
         with ThreadPoolExecutor(max_workers=len(actions)) as pool:
-            return list(pool.map(run, actions))
+            futures = [pool.submit(run, action) for action in actions]
+            return [future.result(timeout=10) for future in futures]
 
     def test_update_and_remove_same_date(self):
         series = EventsSeries.objects.create(name="A", start_at=datetime(2026, 1, 1, tzinfo=timezone.utc), period=1)

@@ -5,13 +5,13 @@ class EventsSeries(models.Model):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.PROTECT, related_name="event_series")
     name = models.TextField()
     start_at = models.DateTimeField()
-    period = models.PositiveIntegerField(null=True, blank=True)
+    period = models.BigIntegerField(null=True, blank=True)
     cutoff_date = models.DateField(null=True, blank=True)
 
     class Meta:
         constraints = [
             models.CheckConstraint(
-                condition=models.Q(period__isnull=True) | models.Q(period__gte=1),
+                condition=models.Q(period__isnull=True) | (models.Q(period__gte=1) & models.Q(period__lte=2**63 - 1)),
                 name="event_series_period_null_or_positive",
             ),
         ]
