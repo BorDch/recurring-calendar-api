@@ -23,6 +23,13 @@ class CalendarApiTests(TestCase):
     def post_json(self, path, data):
         return self.client.post(path, data=json.dumps(data), content_type="application/json")
 
+    def test_local_wrong_method_returns_405_with_csrf_checks(self):
+        if settings.CALENDAR_PROFILE != 'local':
+            self.skipTest('local API contract')
+        csrf_client = Client(enforce_csrf_checks=True)
+        self.assertEqual(csrf_client.post('/events/2026/11/9/').status_code, 405)
+        self.assertEqual(csrf_client.post('/events/range/?start=2026-11-09&end=2026-11-09').status_code, 405)
+
     def test_calendar_page(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)

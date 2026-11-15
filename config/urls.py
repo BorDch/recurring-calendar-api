@@ -24,21 +24,21 @@ from django.contrib.auth import views as auth_views
 from django.views.decorators.csrf import csrf_exempt
 
 
-def calendar_view(view, *, write=False):
+def calendar_view(view):
     if settings.CALENDAR_PROFILE in ('private', 'production'):
         return login_required(view)
-    return csrf_exempt(view) if write else view
+    return csrf_exempt(view)
 
 
 urlpatterns = [
     path('', calendar_view(views.calendar_home), name='calendar_home'),
     path('admin/', admin.site.urls),
     path('events/range/', calendar_view(views.events_range), name='events_range'),
-    path('add/', calendar_view(views.add_event, write=True), name='add_event'),
+    path('add/', calendar_view(views.add_event), name='add_event'),
     path('events/<str:year>/<str:month>/<str:day>/', calendar_view(views.events_on_date), name='events_on_date'),
-    path('update/<int:id>/<str:year>/<str:month>/<str:day>/', calendar_view(views.update_event, write=True), name='update_event'),
-    path('remove/<int:id>/<str:year>/<str:month>/<str:day>/', calendar_view(views.remove_event, write=True), name='remove_event'),
-    path('remove-next/<int:id>/<str:year>/<str:month>/<str:day>/', calendar_view(views.remove_next, write=True), name='remove_next'),
+    path('update/<int:id>/<str:year>/<str:month>/<str:day>/', calendar_view(views.update_event), name='update_event'),
+    path('remove/<int:id>/<str:year>/<str:month>/<str:day>/', calendar_view(views.remove_event), name='remove_event'),
+    path('remove-next/<int:id>/<str:year>/<str:month>/<str:day>/', calendar_view(views.remove_next), name='remove_next'),
 ]
 if settings.CALENDAR_PROFILE in ('private', 'production'):
     urlpatterns += [
