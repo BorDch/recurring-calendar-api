@@ -68,7 +68,7 @@
     $('month-subtitle').textContent = state.loading ? 'Загружаем события…' : 'События и повторения на месяц';
     renderMini(); renderGrid(); renderDetails();
   }
-  async function loadMonth() {
+  async function loadMonth(afterSave = false) {
     const ticket = ++state.request; if (state.abort) state.abort.abort(); state.abort = new AbortController();
     const {start, end} = rangeForMonth(); state.loading = true; state.failed = false; state.days = new Map(); setStatus('Загружаем календарь…', true); render();
     try {
@@ -80,7 +80,7 @@
       render();
     } catch (error) {
       if (ticket !== state.request || error.name === 'AbortError') return;
-      state.loading = false; state.failed = true; setStatus('Не удалось загрузить календарь. Проверьте соединение и повторите попытку.'); render();
+      state.loading = false; state.failed = true; setStatus(afterSave ? 'Изменение сохранено, но календарь не удалось обновить. Повторите загрузку.' : 'Не удалось загрузить календарь. Проверьте соединение и повторите попытку.'); render();
     }
   }
   function changeMonth(delta) { const d = new Date(Date.UTC(state.year, state.month - 1 + delta, 1)); state.year = d.getUTCFullYear(); state.month = d.getUTCMonth() + 1; state.selected = iso(state.year, state.month, 1); state.event = null; loadMonth(); }
@@ -88,31 +88,111 @@
   function closeDialog(dialog) { dialog.close(); }
   for (const dialog of document.querySelectorAll('dialog')) { dialog.addEventListener('close', () => { if (returnFocus?.isConnected) returnFocus.focus(); returnFocus = null; }); dialog.addEventListener('click', event => { if (event.target === dialog) closeDialog(dialog); }); for (const button of dialog.querySelectorAll('[data-close]')) button.addEventListener('click', () => closeDialog(dialog)); }
   function errorAt(id, message) { const el = $(id); el.textContent = message; el.hidden = !message; }
-  async function post(path, payload) { const response = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json', ...(document.querySelector('meta[name="csrf-token"]') ? {'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content} : {})}, body: payload === undefined ? undefined : JSON.stringify(payload)}); if (!response.ok) throw new Error(response.status === 404 ? 'Это повторение больше недоступно. Обновите календарь.' : response.status === 400 ? 'Проверьте введённые данные.' : 'Не удалось сохранить изменения. Попробуйте ещё раз.'); return response; }
+  async function post(path, payload) {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+    const response = await fetch(path, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', ...(csrfToken ? {'X-CSRFToken': csrfToken} : {})},
+      body: payload === undefined ? undefined : JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const message = response.status === 404 ? 'Это повторение больше недоступно. Обновите календарь.'
+        : response.status === 400 ? 'Проверьте введённые данные.'
+        : 'Не удалось сохранить изменения. Попробуйте ещё раз.';
+      throw new Error(message);
+    }
+    return response;
+  }
   $('create-button').addEventListener('click', () => { $('event-form').reset(); $('event-date').value = state.selected; $('event-time').value = '09:00'; $('custom-period-wrap').hidden = true; errorAt('event-error', ''); openDialog($('event-dialog')); $('event-name').focus(); });
   $('event-repeat').addEventListener('change', () => { $('custom-period-wrap').hidden = $('event-repeat').value !== 'custom'; });
   $('event-form').addEventListener('submit', async event => {
-    event.preventDefault(); const button = $('save-event'); if (button.disabled) return;
-    const name = $('event-name').value.trim(), day = $('event-date').value, time = $('event-time').value;
-    if (!name || !day || !/^\d{2}:\d{2}$/.test(time)) { errorAt('event-error', 'Заполните название, дату и время.'); return; }
-    const repeat = $('event-repeat').value; let period = repeat === 'once' ? null : repeat === 'daily' ? 1 : repeat === 'weekly' ? 7 : Number($('event-period').value);
-    if (repeat === 'custom' && (!Number.isSafeInteger(period) || period < 1)) { errorAt('event-error', 'Период должен быть целым числом дней больше нуля.'); return; }
-    const [year, month, date] = day.split('-').map(Number), [hour, minute] = time.split(':').map(Number);
+    event.preventDefault();
+    const button = $('save-event');
+    if (button.disabled) return;
+    const name = $('event-name').value.trim();
+    const day = $('event-date').value;
+    const time = $('event-time').value;
+    if (!name || !day || !/^\d{2}:\d{2}$/.test(time)) {
+      errorAt('event-error', 'Заполните название, дату и время.');
+      return;
+    }
+    const repeat = $('event-repeat').value;
+    const period = repeat === 'once' ? null : repeat === 'daily' ? 1
+      : repeat === 'weekly' ? 7 : Number($('event-period').value);
+    if (repeat === 'custom' && (!Number.isSafeInteger(period) || period < 1)) {
+      errorAt('event-error', 'Период должен быть целым числом дней больше нуля.');
+      return;
+    }
+    const [year, month, date] = day.split('-').map(Number);
+    const [hour, minute] = time.split(':').map(Number);
     const start_at = Math.floor(Date.UTC(year, month - 1, date, hour, minute) / 1000);
-    if (!Number.isSafeInteger(start_at)) { errorAt('event-error', 'Дата или время указаны неверно.'); return; }
-    button.disabled = true; errorAt('event-error', '');
-    try { await post('/add/', {name, start_at, period}); closeDialog($('event-dialog')); state.year = year; state.month = month; state.selected = day; state.event = null; await loadMonth(); }
-    catch (error) { errorAt('event-error', error.message || 'Проверьте соединение и повторите попытку.'); }
-    finally { button.disabled = false; }
+    if (!Number.isSafeInteger(start_at)) {
+      errorAt('event-error', 'Дата или время указаны неверно.');
+      return;
+    }
+    button.disabled = true;
+    errorAt('event-error', '');
+    try {
+      await post('/add/', {name, start_at, period});
+    } catch (error) {
+      errorAt('event-error', error.message || 'Проверьте соединение и повторите попытку.');
+      button.disabled = false;
+      return;
+    }
+    button.disabled = false;
+    closeDialog($('event-dialog'));
+    state.year = year;
+    state.month = month;
+    state.selected = day;
+    state.event = null;
+    await loadMonth(true);
   });
   function occurrencePath(kind) { const [y, m, d] = state.selected.split('-').map(Number); return `/${kind}/${state.event.id}/${y}/${m}/${d}/`; }
   function openRename() { if (!state.event) return; $('rename-name').value = state.event.name; errorAt('rename-error', ''); openDialog($('rename-dialog')); $('rename-name').focus(); }
-  $('rename-form').addEventListener('submit', async event => { event.preventDefault(); const button = $('save-rename'); if (button.disabled || !state.event) return; const name = $('rename-name').value.trim(); if (!name) { errorAt('rename-error', 'Введите название события.'); return; } button.disabled = true; errorAt('rename-error', ''); try { await post(occurrencePath('update'), {name}); closeDialog($('rename-dialog')); await loadMonth(); } catch (error) { errorAt('rename-error', error.message || 'Проверьте соединение и повторите попытку.'); } finally { button.disabled = false; } });
+  $('rename-form').addEventListener('submit', async event => {
+    event.preventDefault();
+    const button = $('save-rename');
+    if (button.disabled || !state.event) return;
+    const name = $('rename-name').value.trim();
+    if (!name) {
+      errorAt('rename-error', 'Введите название события.');
+      return;
+    }
+    button.disabled = true;
+    errorAt('rename-error', '');
+    try {
+      await post(occurrencePath('update'), {name});
+    } catch (error) {
+      errorAt('rename-error', error.message || 'Проверьте соединение и повторите попытку.');
+      button.disabled = false;
+      return;
+    }
+    button.disabled = false;
+    closeDialog($('rename-dialog'));
+    await loadMonth(true);
+  });
   function openDelete(scope) { if (!state.event) return; pendingDelete = {scope, path: occurrencePath(scope === 'one' ? 'remove' : 'remove-next')}; $('delete-copy').textContent = `«${state.event.name}», ${humanDate(state.selected)}. ${scope === 'one' ? 'Будет удалено только это повторение.' : 'Будут удалены это повторение и все последующие в серии.'}`; errorAt('delete-error', ''); openDialog($('delete-dialog')); }
-  $('confirm-delete').addEventListener('click', async () => { const button = $('confirm-delete'); if (button.disabled || !pendingDelete) return; button.disabled = true; errorAt('delete-error', ''); try { await post(pendingDelete.path); closeDialog($('delete-dialog')); state.event = null; await loadMonth(); } catch (error) { errorAt('delete-error', error.message || 'Проверьте соединение и повторите попытку.'); } finally { button.disabled = false; } });
+  $('confirm-delete').addEventListener('click', async () => {
+    const button = $('confirm-delete');
+    if (button.disabled || !pendingDelete) return;
+    button.disabled = true;
+    errorAt('delete-error', '');
+    try {
+      await post(pendingDelete.path);
+    } catch (error) {
+      errorAt('delete-error', error.message || 'Проверьте соединение и повторите попытку.');
+      button.disabled = false;
+      return;
+    }
+    button.disabled = false;
+    closeDialog($('delete-dialog'));
+    pendingDelete = null;
+    state.event = null;
+    await loadMonth(true);
+  });
   for (const id of ['prev-month', 'mini-prev']) $(id).addEventListener('click', () => changeMonth(-1));
   for (const id of ['next-month', 'mini-next']) $(id).addEventListener('click', () => changeMonth(1));
   $('today-button').addEventListener('click', () => { const d = dateOf(today); state.year = d.getUTCFullYear(); state.month = d.getUTCMonth() + 1; state.selected = today; state.event = null; loadMonth(); });
-  $('retry-load').addEventListener('click', loadMonth);
+  $('retry-load').addEventListener('click', () => loadMonth());
   loadMonth();
 })();
