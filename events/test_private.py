@@ -5,6 +5,9 @@ from django.test import Client, TestCase, override_settings
 from django.conf import settings
 from unittest import skipUnless
 from io import StringIO
+from unittest.mock import patch
+from django.db.models.query import QuerySet
+from django.core.management.base import CommandError
 from django.core.management import call_command
 from .models import EventException, EventsSeries
 
@@ -12,6 +15,26 @@ from .models import EventException, EventsSeries
 @skipUnless(settings.CALENDAR_PROFILE in ('private', 'production'), 'authenticated profile only')
 @override_settings(SECURE_SSL_REDIRECT=False)
 class PrivateCalendarTests(TestCase):
+    def test_assign_series_rolls_back_simulated_partial_update(self):
+        user = get_user_model().objects.create_user(username='assignee', password='long-test-password')
+        stamp = datetime(2026, 11, 9, tzinfo=timezone.utc)
+        first = EventsSeries.objects.create(name='First', start_at=stamp, period=None)
+        second = EventsSeries.objects.create(name='Second', start_at=stamp, period=None)
+        real_update = QuerySet.update
+
+        def partial_update(queryset, **values):
+            if queryset.model is EventsSeries and values.get('owner') == user:
+                real_update(queryset.filter(pk=first.pk), **values)
+                return 1
+            return real_update(queryset, **values)
+
+        with patch.object(QuerySet, 'update', partial_update):
+            with self.assertRaisesMessage(CommandError, 'assigned concurrently'):
+                call_command('assign_series', user.username, first.pk, second.pk,
+                             '--apply', stdout=StringIO())
+        self.assertIsNone(EventsSeries.objects.get(pk=first.pk).owner_id)
+        self.assertIsNone(EventsSeries.objects.get(pk=second.pk).owner_id)
+
     def test_two_users_csrf_logout_and_ownership(self):
         users = [get_user_model().objects.create_user(username=name, password='long-test-password') for name in ('alice', 'bob')]
         alice, bob = (Client(enforce_csrf_checks=True) for _ in users)

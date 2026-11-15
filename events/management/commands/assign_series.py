@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
+from django.db import transaction
 from events.models import EventsSeries
 
 
@@ -25,7 +26,10 @@ class Command(BaseCommand):
         for item in series:
             self.stdout.write(f'{item.pk}: {item.name} -> {user.username}')
         if apply:
-            EventsSeries.objects.filter(pk__in=ids, owner__isnull=True).update(owner=user)
-            self.stdout.write(self.style.SUCCESS(f'Assigned {len(ids)} series'))
+            with transaction.atomic():
+                updated = EventsSeries.objects.filter(pk__in=ids, owner__isnull=True).update(owner=user)
+                if updated != len(ids):
+                    raise CommandError('Some series were assigned concurrently; no assignments saved')
+            self.stdout.write(self.style.SUCCESS(f'Assigned {updated} series'))
         else:
             self.stdout.write('Preview only; add --apply to assign')

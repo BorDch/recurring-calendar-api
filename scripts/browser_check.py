@@ -102,7 +102,7 @@ with tempfile.TemporaryDirectory(prefix='recurring-browser-') as tmp:
         click(driver, '#next-month')
         wait_for(driver, lambda d: 'Февраль 2027' in d.find_element(By.ID, 'month-title').text)
         assert not driver.find_elements(By.CSS_SELECTOR, '.cell-event')
-        driver.execute_script('const realFetch=window.fetch.bind(window); let delay=true; window.fetch=(url, options)=>{if(delay && String(url).includes("/events/range/")){delay=false; return new Promise(resolve=>setTimeout(()=>resolve(realFetch(url, {...options, signal:undefined})), 600));} return realFetch(url, options)}')
+        driver.execute_script('window.__originalFetch=window.fetch; const realFetch=window.fetch.bind(window); let delay=true; window.fetch=(url, options)=>{if(delay && String(url).includes("/events/range/")){delay=false; return new Promise(resolve=>setTimeout(()=>resolve(realFetch(url, {...options, signal:undefined})), 600));} return realFetch(url, options)}')
         click(driver, '#prev-month')
         click(driver, '#next-month')
         wait_for(driver, lambda d: 'Февраль 2027' in d.find_element(By.ID, 'month-title').text)
@@ -115,6 +115,21 @@ with tempfile.TemporaryDirectory(prefix='recurring-browser-') as tmp:
         width = driver.execute_script('return [document.documentElement.scrollWidth, window.innerWidth]')
         assert width[0] <= width[1], f'horizontal overflow: {width}'
         driver.get_full_page_screenshot_as_file(str(SHOTS / 'calendar-mobile.png'))
+        driver.execute_script('window.fetch=window.__originalFetch')
+        # A failed refresh after a successful create must not look like a failed POST.
+        driver.execute_script('window.__addPosts=0; let fail=true; window.fetch=(url, options)=>{if(String(url).endsWith("/add/") && options?.method==="POST") window.__addPosts++; if(fail && String(url).includes("/events/range/")){fail=false; return Promise.reject(new Error("offline"));} return window.__originalFetch(url, options)}')
+        click(driver, '#create-button')
+        set_value(driver, '#event-name', 'Проверка после сбоя чтения')
+        set_value(driver, '#event-date', '2027-01-06')
+        set_value(driver, '#event-time', '10:00')
+        click(driver, '#save-event')
+        wait_for(driver, lambda d: d.find_element(By.ID, 'event-dialog').get_attribute('open') is None)
+        wait_for(driver, lambda d: 'Изменение сохранено, но календарь не удалось обновить' in d.find_element(By.ID, 'status-message').text)
+        click(driver, '#retry-load')
+        wait_for(driver, lambda d: 'Проверка после сбоя чтения' in d.find_element(By.ID, 'day-list').text)
+        assert driver.find_element(By.ID, 'day-count').text == '1'
+        assert driver.execute_script('return window.__addPosts') == 1
+        driver.execute_script('window.fetch=window.__originalFetch; delete window.__addPosts')
         print('Firefox browser flow PASS; screenshots:', ', '.join(str(p) for p in sorted(SHOTS.glob('*.png'))))
     finally:
         if driver: driver.quit()
