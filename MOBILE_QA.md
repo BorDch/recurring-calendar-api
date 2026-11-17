@@ -1,6 +1,6 @@
 # Проверка узкого viewport
 
-Команда: `.venv/bin/python scripts/mobile_viewport_check.py` (Selenium, Firefox, WebDriver BiDi `browsingContext.setViewport`). Запуск создаёт временную копию проекта и новую SQLite-базу. Полные замеры каждого состояния: [`qa/mobile-viewport-metrics.jsonl`](qa/mobile-viewport-metrics.jsonl).
+Команда: `.venv/bin/python scripts/mobile_viewport_check.py` (Selenium, Firefox, WebDriver BiDi `browsingContext.setViewport`). Запуск создаёт временную копию проекта и новую SQLite-базу. Итоговые замеры каждого состояния приведены ниже; исходный файл метрик в репозитории отсутствует.
 
 | Viewport | `window.innerWidth` | `document.documentElement.clientWidth` | `document.documentElement.scrollWidth` | Горизонтальное переполнение |
 | ---: | ---: | ---: | ---: | --- |
