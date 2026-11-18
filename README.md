@@ -4,15 +4,20 @@
 Можно создать серию, посмотреть события дня, переименовать или отменить один повтор и удалить все повторы с выбранной даты.
 
 ```mermaid
-flowchart LR
-    Browser[Браузер] -->|HTTP| Django[Django: страница и REST API]
-    Django -->|чтение и запись| Series[EventsSeries: правило и cutoff]
-    Django -->|чтение и запись| Exception[EventException: переименование и отмена]
-    Series --> DB[(База данных)]
-    Exception --> DB
-    Django -->|вычисляет повторы при чтении| Browser
-    DB --- SQLite[SQLite: local и private]
-    DB --- PostgreSQL[PostgreSQL: production]
+flowchart TB
+    Browser["Браузер: календарь или HTTP-клиент"]
+    Routes["Django: маршруты и проверка доступа"]
+    API["Обработчики API: повторы и исключения"]
+    ORM["Django ORM: EventsSeries и EventException"]
+    SQLite["SQLite: локальный запуск"]
+    PostgreSQL["PostgreSQL: production"]
+
+    Browser --> Routes --> API --> ORM
+    ORM -->|local и private| SQLite
+    ORM -->|production| PostgreSQL
+
+    classDef box fill:#052b4d,stroke:#244967,color:#a3d3ff
+    class Browser,Routes,API,ORM,SQLite,PostgreSQL box
 ```
 
 SQLite и PostgreSQL используются в разных профилях, не одновременно. Повторы не хранятся отдельными строками: Django вычисляет их при чтении по правилу серии и исключениям.
