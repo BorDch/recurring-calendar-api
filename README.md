@@ -3,11 +3,44 @@
 Календарь повторяющихся событий на Django с REST API и браузерным интерфейсом.
 Можно создать серию, посмотреть события дня, переименовать или отменить один повтор и удалить все повторы с выбранной даты.
 
+```mermaid
+flowchart TB
+    Browser["Браузер: календарь или HTTP-клиент"]
+    Routes["Django: маршруты и проверка доступа"]
+    API["Обработчики API: повторы и исключения"]
+    ORM["Django ORM: EventsSeries и EventException"]
+    SQLite["SQLite: локальный запуск"]
+    PostgreSQL["PostgreSQL: production"]
+
+    Browser --> Routes --> API --> ORM
+    ORM -->|local и private| SQLite
+    ORM -->|production| PostgreSQL
+
+    classDef box fill:#052b4d,stroke:#244967,color:#a3d3ff
+    class Browser,Routes,API,ORM,SQLite,PostgreSQL box
+```
+
+SQLite и PostgreSQL используются в разных профилях, не одновременно. Повторы не хранятся отдельными строками: Django вычисляет их при чтении по правилу серии и исключениям.
+
 ![Календарь](docs/demo-calendar.png)
 
 ## Запуск
 
-Требования: Python 3.14. Команды выполняются из корня проекта; пример для Linux/macOS.
+Для Windows/macOS нужен Docker Desktop с Linux-контейнерами; для Linux — Docker Engine с Compose plugin либо Docker Desktop. Из корня проекта:
+
+```bash
+docker compose up --build
+```
+
+Откройте http://localhost:8000/. Для остановки:
+
+```bash
+docker compose down
+```
+
+База SQLite остаётся в именованном volume после `down`; `docker compose down --volumes` **удаляет данные**.
+
+Альтернатива без Docker — Python 3.14 и виртуальное окружение (команды для Linux/macOS):
 
 ```bash
 python3.14 -m venv .venv
@@ -16,8 +49,7 @@ python3.14 -m venv .venv
 .venv/bin/python manage.py runserver localhost:8000
 ```
 
-Откройте http://localhost:8000/. По умолчанию используется SQLite, вход не требуется.
-Для этого запуска Docker и Node.js не нужны. Данные сохраняются в `db.local.sqlite3`.
+Откройте http://localhost:8000/. По умолчанию используется SQLite, вход не требуется; данные сохраняются в `db.local.sqlite3`.
 
 ## API
 
