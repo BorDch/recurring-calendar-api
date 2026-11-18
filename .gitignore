@@ -11,9 +11,5 @@ __pycache__/
 *.sqlite3-wal
 *.sqlite3-shm
 /staticfiles/
-/demo-video/.venv/
-/demo-video/artifacts/
-/demo-video/.browsers/
-/docs/diagrams/previews/
 /node_modules/
 /.ruff_cache/
