@@ -1,5 +1,21 @@
 services:
+  web:
+    build: .
+    environment:
+      CALENDAR_PROFILE: local
+      CALENDAR_DB: /data/db.sqlite3
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - calendar_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3).close()"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 20s
   postgres:
+    profiles: [postgres]
     image: postgres:17
     environment:
       POSTGRES_DB: calendar
@@ -14,4 +30,5 @@ services:
       interval: 2s
       retries: 15
 volumes:
+  calendar_data:
   calendar_pg_test:

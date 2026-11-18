@@ -42,11 +42,11 @@ HTTPS включён по умолчанию; TLS должен завершат�
 
 ## Локальный PostgreSQL для тестов
 
-Существующий Compose запускает только базу; приложение выполняется из виртуального окружения.
+Профиль Compose `postgres` запускает только базу; приложение выполняется из виртуального окружения.
 Docker нужен только для этого варианта, если PostgreSQL не установлен отдельно.
 
 ```bash
-docker compose up -d --wait postgres
+docker compose --profile postgres up -d --wait postgres
 ```
 
 Экспортируйте переменные production-профиля из раздела выше; для локальной базы используйте:
@@ -59,4 +59,4 @@ export POSTGRES_PASSWORD=local-test-only POSTGRES_HOST=127.0.0.1 POSTGRES_PORT=5
 ```
 
 Пользователю PostgreSQL для запуска тестов нужно право создания тестовой базы.
-Завершение работы контейнера: `docker compose down`.
+Завершение работы контейнера: `docker compose --profile postgres down`.

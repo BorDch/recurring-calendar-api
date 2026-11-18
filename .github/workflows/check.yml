@@ -1,6 +1,14 @@
 name: check
 on: [push, pull_request]
 jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -p calendar-ci up --build -d --wait web
+      - run: curl --fail --silent --show-error http://localhost:8000/ > /dev/null
+      - if: always()
+        run: docker compose -p calendar-ci down --volumes
   sqlite:
     runs-on: ubuntu-latest
     steps:
