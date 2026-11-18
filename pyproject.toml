@@ -1,0 +1,16 @@
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+extend-exclude = [
+  "events/migrations",
+  ".venv",
+  ".venv-dev",
+  "demo-video/.venv",
+  "demo-video/artifacts",
+  "demo-video/.browsers",
+  "staticfiles",
+  "node_modules",
+]
+
+[tool.ruff.lint]
+select = ["I"]

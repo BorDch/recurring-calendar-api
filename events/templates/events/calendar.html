@@ -1,69 +1,190 @@
 {% load static %}
 <!doctype html>
 <html lang="ru">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Календарь</title>
-  <link rel="stylesheet" href="{% static 'events/calendar.css' %}">
-  {% if private_profile %}<meta name="csrf-token" content="{{ csrf_token }}">{% endif %}
-  <script src="{% static 'events/calendar.js' %}" defer></script>
-</head>
-<body>
-<div class="app-shell">
-  <aside class="sidebar" aria-label="Навигация">
-    <div class="brand"><span class="brand-mark" aria-hidden="true">▦</span><span>Календарь</span></div>
-    <button class="primary-button create-button" id="create-button" type="button"><span aria-hidden="true">＋</span> Создать событие</button>
-    <div class="mini-head"><strong id="mini-title"></strong><div class="mini-actions"><button type="button" id="mini-prev" aria-label="Предыдущий месяц">‹</button><button type="button" id="mini-next" aria-label="Следующий месяц">›</button></div></div>
-    <div class="mini-weekdays" aria-hidden="true"><span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span></div>
-    <div class="mini-grid" id="mini-grid" aria-label="Выбор даты"></div>
-    <div class="sidebar-note"><span class="note-dot"></span><span>Время событий указано в UTC</span></div>
-  </aside>
-
-  <main class="main-content">
-    <header class="main-header">
-      {% if private_profile %}<form method="post" action="{% url 'logout' %}" class="logout-form">{% csrf_token %}<button type="submit">Выйти ({{ user.username }})</button></form>{% endif %}
-      <div><p class="eyebrow">Планирование</p><h1 id="month-title">Календарь</h1><p class="subtitle" id="month-subtitle">События и повторения на месяц</p></div>
-      <div class="month-controls"><button class="today-button" id="today-button" type="button">Сегодня</button><div class="arrow-group"><button id="prev-month" type="button" aria-label="Предыдущий месяц">‹</button><button id="next-month" type="button" aria-label="Следующий месяц">›</button></div></div>
-    </header>
-    <div class="status-line" id="status-line" role="status" aria-live="polite"><span id="status-message"></span><button id="retry-load" type="button" hidden>Повторить</button></div>
-    <section class="calendar-card" aria-label="Календарь месяца">
-      <div class="weekdays" aria-hidden="true"><span>Понедельник</span><span>Вторник</span><span>Среда</span><span>Четверг</span><span>Пятница</span><span>Суббота</span><span>Воскресенье</span></div>
-      <div class="month-grid" id="month-grid"></div>
-    </section>
-  </main>
-
-  <aside class="detail-panel" aria-label="Выбранный день">
-    <div class="detail-top"><p class="eyebrow">Выбранный день</p><h2 id="selected-date-title"></h2><p class="detail-date" id="selected-date-meta"></p></div>
-    <div class="detail-section-head"><span>События</span><span class="count-pill" id="day-count">0</span></div>
-    <div class="day-list" id="day-list"></div>
-    <div class="event-detail" id="event-detail" hidden></div>
-  </aside>
-</div>
-
-<dialog id="event-dialog" class="modal" aria-labelledby="dialog-title">
-  <form id="event-form" novalidate>
-    <div class="modal-heading"><div><p class="eyebrow">Новое событие</p><h2 id="dialog-title">Создать событие</h2></div><button class="icon-close" type="button" data-close aria-label="Закрыть">×</button></div>
-    <label for="event-name">Название</label><input id="event-name" name="name" type="text" maxlength="200" required placeholder="Например, встреча команды">
-    <div class="form-row"><div><label for="event-date">Дата</label><input id="event-date" name="date" type="date" required></div><div><label for="event-time">Время <span class="utc-tag">UTC</span></label><input id="event-time" name="time" type="time" required value="09:00"></div></div>
-    <label for="event-repeat">Повторение</label><select id="event-repeat" name="repeat"><option value="once">Один раз</option><option value="daily">Каждый день</option><option value="weekly">Каждую неделю</option><option value="custom">Каждые N дней</option></select>
-    <div id="custom-period-wrap" hidden><label for="event-period">Период в днях</label><input id="event-period" name="period" type="number" min="1" step="1" inputmode="numeric" value="2"></div>
-    <p class="form-error" id="event-error" role="alert" hidden></p>
-    <div class="modal-actions"><button class="secondary-button" type="button" data-close>Отмена</button><button class="primary-button" id="save-event" type="submit">Создать событие</button></div>
-  </form>
-</dialog>
-
-<dialog id="rename-dialog" class="modal small-modal" aria-labelledby="rename-title">
-  <form id="rename-form" novalidate><div class="modal-heading"><div><p class="eyebrow">Одно повторение</p><h2 id="rename-title">Переименовать</h2></div><button class="icon-close" type="button" data-close aria-label="Закрыть">×</button></div>
-    <label for="rename-name">Новое название</label><input id="rename-name" type="text" maxlength="200" required><p class="form-error" id="rename-error" role="alert" hidden></p>
-    <div class="modal-actions"><button class="secondary-button" type="button" data-close>Отмена</button><button class="primary-button" id="save-rename" type="submit">Сохранить</button></div>
-  </form>
-</dialog>
-
-<dialog id="delete-dialog" class="modal small-modal" aria-labelledby="delete-title">
-  <div class="modal-heading"><div><p class="eyebrow">Подтверждение</p><h2 id="delete-title">Удалить событие?</h2></div><button class="icon-close" type="button" data-close aria-label="Закрыть">×</button></div>
-  <p class="confirm-copy" id="delete-copy"></p><p class="form-error" id="delete-error" role="alert" hidden></p>
-  <div class="modal-actions"><button class="secondary-button" type="button" data-close>Отмена</button><button class="danger-button" id="confirm-delete" type="button">Удалить</button></div>
-</dialog>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Календарь</title>
+    <link rel="stylesheet" href="{% static 'events/calendar.css' %}" />
+    {% if private_profile %}
+    <meta name="csrf-token" content="{{ csrf_token }}" />
+    {% endif %}
+    <script src="{% static 'events/calendar.js' %}" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Навигация">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">▦</span>
+          <span>Календарь</span>
+        </div>
+        <button class="primary-button create-button" id="create-button" type="button">
+          <span aria-hidden="true">＋</span>
+          Создать событие
+        </button>
+        <div class="mini-head">
+          <strong id="mini-title"></strong>
+          <div class="mini-actions">
+            <button type="button" id="mini-prev" aria-label="Предыдущий месяц">‹</button>
+            <button type="button" id="mini-next" aria-label="Следующий месяц">›</button>
+          </div>
+        </div>
+        <div class="mini-weekdays" aria-hidden="true">
+          <span>Пн</span>
+          <span>Вт</span>
+          <span>Ср</span>
+          <span>Чт</span>
+          <span>Пт</span>
+          <span>Сб</span>
+          <span>Вс</span>
+        </div>
+        <div class="mini-grid" id="mini-grid" aria-label="Выбор даты"></div>
+        <div class="sidebar-note">
+          <span class="note-dot"></span>
+          <span>Время событий указано в UTC</span>
+        </div>
+      </aside>
+      <main class="main-content">
+        <header class="main-header">
+          {% if private_profile %}
+          <form method="post" action="{% url 'logout' %}" class="logout-form">
+            {% csrf_token %}
+            <button type="submit">Выйти ({{ user.username }})</button>
+          </form>
+          {% endif %}
+          <div>
+            <p class="eyebrow">Планирование</p>
+            <h1 id="month-title">Календарь</h1>
+            <p class="subtitle" id="month-subtitle">События и повторения на месяц</p>
+          </div>
+          <div class="month-controls">
+            <button class="today-button" id="today-button" type="button">Сегодня</button>
+            <div class="arrow-group">
+              <button id="prev-month" type="button" aria-label="Предыдущий месяц">‹</button>
+              <button id="next-month" type="button" aria-label="Следующий месяц">›</button>
+            </div>
+          </div>
+        </header>
+        <div class="status-line" id="status-line" role="status" aria-live="polite">
+          <span id="status-message"></span>
+          <button id="retry-load" type="button" hidden>Повторить</button>
+        </div>
+        <section class="calendar-card" aria-label="Календарь месяца">
+          <div class="weekdays" aria-hidden="true">
+            <span>Понедельник</span>
+            <span>Вторник</span>
+            <span>Среда</span>
+            <span>Четверг</span>
+            <span>Пятница</span>
+            <span>Суббота</span>
+            <span>Воскресенье</span>
+          </div>
+          <div class="month-grid" id="month-grid"></div>
+        </section>
+      </main>
+      <aside class="detail-panel" aria-label="Выбранный день">
+        <div class="detail-top">
+          <p class="eyebrow">Выбранный день</p>
+          <h2 id="selected-date-title"></h2>
+          <p class="detail-date" id="selected-date-meta"></p>
+        </div>
+        <div class="detail-section-head">
+          <span>События</span>
+          <span class="count-pill" id="day-count">0</span>
+        </div>
+        <div class="day-list" id="day-list"></div>
+        <div class="event-detail" id="event-detail" hidden></div>
+      </aside>
+    </div>
+    <dialog id="event-dialog" class="modal" aria-labelledby="dialog-title">
+      <form id="event-form" novalidate>
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">Новое событие</p>
+            <h2 id="dialog-title">Создать событие</h2>
+          </div>
+          <button class="icon-close" type="button" data-close aria-label="Закрыть">×</button>
+        </div>
+        <label for="event-name">Название</label>
+        <input
+          id="event-name"
+          name="name"
+          type="text"
+          maxlength="200"
+          required
+          placeholder="Например, встреча команды"
+        />
+        <div class="form-row">
+          <div>
+            <label for="event-date">Дата</label>
+            <input id="event-date" name="date" type="date" required />
+          </div>
+          <div>
+            <label for="event-time">
+              Время
+              <span class="utc-tag">UTC</span>
+            </label>
+            <input id="event-time" name="time" type="time" required value="09:00" />
+          </div>
+        </div>
+        <label for="event-repeat">Повторение</label>
+        <select id="event-repeat" name="repeat">
+          <option value="once">Один раз</option>
+          <option value="daily">Каждый день</option>
+          <option value="weekly">Каждую неделю</option>
+          <option value="custom">Каждые N дней</option>
+        </select>
+        <div id="custom-period-wrap" hidden>
+          <label for="event-period">Период в днях</label>
+          <input
+            id="event-period"
+            name="period"
+            type="number"
+            min="1"
+            step="1"
+            inputmode="numeric"
+            value="2"
+          />
+        </div>
+        <p class="form-error" id="event-error" role="alert" hidden></p>
+        <div class="modal-actions">
+          <button class="secondary-button" type="button" data-close>Отмена</button>
+          <button class="primary-button" id="save-event" type="submit">Создать событие</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="rename-dialog" class="modal small-modal" aria-labelledby="rename-title">
+      <form id="rename-form" novalidate>
+        <div class="modal-heading">
+          <div>
+            <p class="eyebrow">Одно повторение</p>
+            <h2 id="rename-title">Переименовать</h2>
+          </div>
+          <button class="icon-close" type="button" data-close aria-label="Закрыть">×</button>
+        </div>
+        <label for="rename-name">Новое название</label>
+        <input id="rename-name" type="text" maxlength="200" required />
+        <p class="form-error" id="rename-error" role="alert" hidden></p>
+        <div class="modal-actions">
+          <button class="secondary-button" type="button" data-close>Отмена</button>
+          <button class="primary-button" id="save-rename" type="submit">Сохранить</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="delete-dialog" class="modal small-modal" aria-labelledby="delete-title">
+      <div class="modal-heading">
+        <div>
+          <p class="eyebrow">Подтверждение</p>
+          <h2 id="delete-title">Удалить событие?</h2>
+        </div>
+        <button class="icon-close" type="button" data-close aria-label="Закрыть">×</button>
+      </div>
+      <p class="confirm-copy" id="delete-copy"></p>
+      <p class="form-error" id="delete-error" role="alert" hidden></p>
+      <div class="modal-actions">
+        <button class="secondary-button" type="button" data-close>Отмена</button>
+        <button class="danger-button" id="confirm-delete" type="button">Удалить</button>
+      </div>
+    </dialog>
+  </body>
 </html>
