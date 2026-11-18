@@ -17,6 +17,21 @@ python3.14 -m venv .venv
 
 Откройте `http://localhost:8000/`. По умолчанию действует локальный профиль. Другие профили и production описаны в [инструкции по развёртыванию](docs/deployment.md).
 
+Основные файлы: маршруты — `config/urls.py`, настройки профилей — `config/settings.py`, правила и HTTP-обработчики — `events/models.py` и `events/views.py`, интерфейс — `events/templates/events/calendar.html` и `events/static/events/`. Подробности — в [техническом отчёте](docs/technical-report.md).
+
+Форматирование проверяется отдельными инструментами разработки (Python 3.14 и Node.js):
+
+```bash
+python3.14 -m venv .venv-dev
+.venv-dev/bin/python -m pip install -r requirements-dev.txt
+npm ci
+.venv-dev/bin/ruff check .
+.venv-dev/bin/ruff format --check .
+npm run format:web:check
+```
+
+`ruff` исключает сгенерированные миграции; `node_modules` и `.venv-dev` не входят в Git.
+
 ## Пять маршрутов ТЗ
 
 | Метод и маршрут | Результат |

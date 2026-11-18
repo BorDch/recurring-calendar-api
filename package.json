@@ -1,0 +1,11 @@
+{
+  "name": "recurring-calendar-api",
+  "private": true,
+  "scripts": {
+    "format:web": "prettier --write events/static/events/calendar.js events/static/events/calendar.css events/templates/events/calendar.html events/templates/registration/login.html",
+    "format:web:check": "prettier --check events/static/events/calendar.js events/static/events/calendar.css events/templates/events/calendar.html events/templates/registration/login.html"
+  },
+  "devDependencies": {
+    "prettier": "3.10.1"
+  }
+}
